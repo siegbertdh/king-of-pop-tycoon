@@ -2503,6 +2503,46 @@ function updatePolice(dt) {
   }
 }
 /* =========================================================
+   POLICE CAR: picks up arrested thieves at the entrance road
+   ========================================================= */
+const policeCar = { g: null, state: 'off', t: 0, red: null, blue: null };
+function buildPoliceCar() {
+  const g = new THREE.Group(), car = new THREE.Group(); g.add(car); // front faces +z in local space
+  const white = M(0xf4f6fb, { metalness: .4, roughness: .3 }), blueM = M(0x1d4ed8, { roughness: .4 }), glass = M(0x162036, { metalness: .9, roughness: .08 }), tire = M(0x111111, { roughness: .9 });
+  car.add(box(1.9, 0.7, 4.3, white, 0, 0.62, 0));
+  car.add(box(1.94, 0.18, 4.32, blueM, 0, 0.66, 0));                  // blue stripe
+  car.add(box(1.7, 0.58, 2.2, glass, 0, 1.25, -0.2)); car.add(box(1.72, 0.07, 2.0, white, 0, 1.57, -0.25)); // cabin + roof
+  policeCar.red = new THREE.MeshStandardMaterial({ color: 0xff2030, emissive: 0xff2030, emissiveIntensity: 2, toneMapped: false });
+  policeCar.blue = new THREE.MeshStandardMaterial({ color: 0x2060ff, emissive: 0x2060ff, emissiveIntensity: 2, toneMapped: false });
+  car.add(box(0.5, 0.16, 0.35, policeCar.red, -0.3, 1.69, -0.25)); car.add(box(0.5, 0.16, 0.35, policeCar.blue, 0.3, 1.69, -0.25)); // light bar
+  for (const sd of [-1, 1]) {
+    const sg = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 0.32), signMat('POLITIE', 0x1d4ed8, 0xffffff)); sg.position.set(sd * 0.975, 0.66, 0.2); sg.rotation.y = sd * Math.PI / 2; car.add(sg);
+    for (const z of [-1.4, 1.4]) { const w = cyl(0.36, 0.36, 0.28, tire, sd * 0.92, 0.36, z, 14); w.rotation.z = Math.PI / 2; car.add(w); }
+    car.add(box(0.36, 0.14, 0.05, M(0xffffee, { emissive: 0xffffcc, emissiveIntensity: 1 }), sd * 0.6, 0.72, 2.16));
+  }
+  g.visible = false; scene.add(g); return g;
+}
+function sirenSound() {
+  const c = audio.ctx; if (!c || !audio.on) return; const t = c.currentTime, o = c.createOscillator(), gn = c.createGain();
+  o.type = 'square'; for (let i = 0; i < 6; i++) o.frequency.setValueAtTime(i % 2 ? 640 : 880, t + i * 0.35);
+  gn.gain.setValueAtTime(0.0001, t); gn.gain.exponentialRampToValueAtTime(0.05, t + 0.05); gn.gain.setValueAtTime(0.05, t + 2.0); gn.gain.exponentialRampToValueAtTime(0.0001, t + 2.1);
+  o.connect(gn); gn.connect(audio.sfx); o.start(t); o.stop(t + 2.15);
+}
+function callPoliceCar() {
+  if (!policeCar.g) policeCar.g = buildPoliceCar();
+  const g = policeCar.g; g.visible = true; g.position.set(3.4, 0, 62); g.rotation.y = Math.PI; // arriving up the road towards the gate
+  policeCar.state = 'arrive'; policeCar.t = 0; sirenSound();
+}
+function updatePoliceCar(dt, t) {
+  const P = policeCar; if (!P.g || P.state === 'off') return;
+  P.t += dt;
+  const on = Math.floor(t * 6) % 2 === 0; P.red.emissiveIntensity = on ? 3 : 0.2; P.blue.emissiveIntensity = on ? 0.2 : 3; // flashing lights
+  const g = P.g;
+  if (P.state === 'arrive') { const u = Math.min(1, P.t / 6), e = 1 - Math.pow(1 - u, 3); g.position.z = lerp(62, 24.5, e); if (u >= 1) P.state = 'parked'; }
+  else if (P.state === 'turn') { const u = Math.min(1, P.t / 1.6); g.rotation.y = lerp(Math.PI, 0, u); g.position.x = 3.4 + Math.sin(u * Math.PI) * 0.6; if (u >= 1) { P.state = 'leave'; P.t = 0; sirenSound(); } }
+  else if (P.state === 'leave') { g.position.z += dt * (3 + P.t * 4); if (g.position.z > 80) { g.visible = false; P.state = 'off'; } }
+}
+/* =========================================================
    THIEVES: someone steals from a shop, the nearest officer gives chase
    ========================================================= */
 let thief = null, thiefT = 40;
@@ -2534,7 +2574,7 @@ function arrestThief(T, cop, msg) {
   banner(msg, 4); audio.cheer(0.45); confettiBurst(T.fig.position.x, 3, T.fig.position.z, 30, 1.5);
 }
 const copDist = (o, f) => Math.hypot(o.fig.position.x - f.position.x, o.fig.position.z - f.position.z);
-function clearThief() { if (thief) { scene.remove(thief.fig); for (const o of thief.chasers) { o.mode = 'patrol'; o.path = []; } } thief = null; thiefT = rand(35, 50); }
+function clearThief() { if (policeCar.g) { policeCar.g.visible = false; policeCar.state = 'off'; } if (thief) { scene.remove(thief.fig); for (const o of thief.chasers) { o.mode = 'patrol'; o.path = []; } } thief = null; thiefT = rand(35, 50); }
 function startThief() {
   const shops = G.buildings.filter(b => b.item.sale); if (!shops.length || !police.length) return;
   const b = pick(shops), spots = neighborsOf(b).filter(([x, z]) => walk(x, z)); if (!spots.length) return;
@@ -2582,7 +2622,7 @@ function updateThief(dt) {
   } else if (T.state === 'arrested') {
     poseFigure(f, 'stand', 0, 0); cuffed(f); poseFigure(T.cop.fig, 'stand', 0, 0);
     T.cop.fig.rotation.y = Math.atan2(f.position.x - T.cop.fig.position.x, f.position.z - T.cop.fig.position.z);
-    if (T.t > 2) { T.state = 'escort'; T.path = pathToExit(f); }
+    if (T.t > 2) { T.state = 'escort'; T.path = pathToExit(f); T.path[T.path.length - 1] = [2.1, 21.2]; }
   } else if (T.state === 'escort') {
     // the officer walks the cuffed thief off the grounds
     T.ph += dt * 6; walkCycle(f, T.ph); cuffed(f);
@@ -2590,7 +2630,18 @@ function updateThief(dt) {
     const bx = f.position.x - Math.sin(f.rotation.y) * 0.9, bz = f.position.z - Math.cos(f.rotation.y) * 0.9;
     T.cop.ph += dt * 6; walkCycle(cf, T.cop.ph); moveAlong(cf, [[bx, bz]], 2.2, dt);
     const p = cf.userData.parts; p.armR.rotation.x = -0.9; p.elbowR.rotation.x = -0.4; // hand on the thief's shoulder
-    if (done) { toast('🚔 De dief is afgevoerd.'); scene.remove(f); T.cop.mode = 'patrol'; T.cop.path = []; thief = null; }
+    if (done) { T.state = 'waitcar'; T.t = 0; callPoliceCar(); toast('🚓 De politieauto komt eraan!'); }
+  } else if (T.state === 'waitcar') {
+    // thief and officer wait at the roadside, facing the arriving car
+    poseFigure(f, 'stand', 0, 0); cuffed(f); f.rotation.y = 0;
+    poseFigure(T.cop.fig, 'stand', 0, 0); T.cop.fig.rotation.y = 0;
+    if (policeCar.state === 'parked') { T.state = 'board'; T.path = [[2.4, 23.6]]; }
+  } else if (T.state === 'board') {
+    T.ph += dt * 6; walkCycle(f, T.ph); cuffed(f);
+    if (moveAlong(f, T.path, 1.2, dt)) {
+      scene.remove(f); toast('🚔 De dief zit in de politieauto. Hij wordt afgevoerd!');
+      T.cop.mode = 'patrol'; T.cop.path = []; thief = null; policeCar.state = 'turn'; policeCar.t = 0;
+    }
   }
 }
 /* =========================================================
@@ -2777,6 +2828,7 @@ function frame() {
     updateLimo(dt, t, b);
     updatePolice(dt);
     updateThief(dt);
+    updatePoliceCar(dt, t);
     G.shown = Math.round(G.present * G.level.scale);
     shownSmooth = lerp(shownSmooth, G.shown, Math.min(1, rdt * 4));
     if (!G.levelDone && G.level.goal && G.shown >= G.level.goal) levelComplete();
