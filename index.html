@@ -331,6 +331,11 @@ const FLOATS = [
   { id: 'f_never', name: 'Neverland-wagen', e: '🎈', price: 1400, outfit: 'bad', move: 'groove', c: [0x00b4d8, 0xff70a6], lvl: 2 },
   { id: 'f_smooth', name: 'Smooth Criminal-wagen', e: '🕴️', price: 1600, outfit: 'smooth', move: 'lean', c: [0xe9ecef, 0x4361ee], lvl: 3 },
   { id: 'f_world', name: 'Heal the World-wagen', e: '🌍', price: 2000, outfit: 'classic', move: 'point', c: [0x0077b6, 0x52b788], lvl: 4 },
+  { id: 'f_beatit', name: 'Beat It-wagen', e: '🔥', price: 1300, outfit: 'beatit', move: 'kick', c: [0xb3001b, 0x111111], lvl: 1 },
+  { id: 'f_bad', name: 'Bad-wagen', e: '😎', price: 1300, outfit: 'bad', move: 'lean', c: [0x161616, 0xc8c8c8], lvl: 2 },
+  { id: 'f_j5', name: 'Jackson 5-wagen', e: '🎶', price: 1700, outfit: 'classic', move: 'groove', c: [0xff9f1c, 0x2ec4b6], lvl: 2 },
+  { id: 'f_disco', name: 'Disco-wagen', e: '🪩', price: 1800, outfit: 'gold', move: 'groove', c: [0x7b2cbf, 0xffd34d], lvl: 3 },
+  { id: 'f_bowl', name: 'Super Bowl-wagen', e: '🏈', price: 2500, outfit: 'superbowl', move: 'point', c: [0x121212, 0xffc300], lvl: 4 },
 ];
 const FLOAT = Object.fromEntries(FLOATS.map(f => [f.id, f]));
 const OUTFITS = {
@@ -345,6 +350,8 @@ const OUTFITS = {
   dancer: { jacket: 0x2b2d42, shirt: 0xff006e, pants: 0x2b2d42, socks: 0x2b2d42, shoes: 0x111111, skin: 0xc68642, hair: 0x2a1a10 },
   dancer2: { jacket: 0xf8f9fa, shirt: 0x3de8ff, pants: 0x2b2d42, socks: 0x2b2d42, shoes: 0x111111, skin: 0xf1c27d, hair: 0x5a3a1a },
   guard: { jacket: 0x15151a, shirt: 0xffffff, pants: 0x15151a, socks: 0x15151a, shoes: 0x080808, tie: 0x111111, shades: true, skin: 0xa0704a, hair: 0x111111 },
+  police: { jacket: 0x14213d, shirt: 0x9bb7e0, pants: 0x14213d, socks: 0x111111, shoes: 0x080808, tie: 0x14213d, skin: 0xc9946f, hair: 0x2a1a10 },
+  thief: { jacket: 0x2b2b2b, shirt: 0xf2f2f2, pants: 0x1a1a1a, socks: 0x111111, shoes: 0x111111, skin: 0xd8a27a, hair: 0x111111 },
   zombie: { jacket: 0x4a4e69, shirt: 0x6b705c, pants: 0x3d405b, socks: 0x3d405b, shoes: 0x222222, skin: 0x8fbf7f, hair: 0x2b2b2b },
 };
 const NEEDS = ['hunger', 'thirst', 'toilet', 'energy', 'fun'];
@@ -569,7 +576,7 @@ function makeFedora(color, band, scale = 1) {
 }
 
 function makeFigure(outfitKey = 'classic') {
-  const O = OUTFITS[outfitKey];
+  const O = typeof outfitKey === 'object' ? outfitKey : OUTFITS[outfitKey];
   const skinCol = O.skin ?? 0xc9946f;
   const skin = PM(skinCol, { roughness: 0.48, sheen: 0.4, sheenRoughness: 0.5, sheenColor: new THREE.Color(0xffd0b0), clearcoat: 0.08 });
   const cloth = (c) => O.leather ? PM(c, { roughness: 0.32, clearcoat: 0.7, clearcoatRoughness: 0.25 }) : PM(c, { roughness: 0.78, sheen: 0.5, sheenRoughness: 0.55, sheenColor: sheenOf(c) });
@@ -972,8 +979,8 @@ function buildStage() {
   // back wall
   S.add(box(34, 13.5, 0.4, black, 0, 8.9, -25.6));
   // screens
-  const scr = new THREE.Mesh(new THREE.PlaneGeometry(20, 10), ledMat); scr.position.set(0, 8.8, -25.35); scr.userData.keep = true; S.add(scr);
-  S.add(box(20.6, 10.6, 0.3, M(0x050505), 0, 8.8, -25.45));
+  // the whole black back wall is one giant LED screen
+  const scr = new THREE.Mesh(new THREE.PlaneGeometry(33.6, 13.2), ledMat); scr.position.set(0, 8.95, -25.38); scr.userData.keep = true; S.add(scr);
   for (const sd of [-1, 1]) {
     const side = new THREE.Mesh(new THREE.PlaneGeometry(6, 7.5), ledMat); side.position.set(sd * 21.5, 10, -19.5); side.rotation.y = -sd * 0.35; side.userData.keep = true; S.add(side);
     const fr = box(6.4, 7.9, 0.3, M(0x050505), sd * 21.55, 10, -19.65); fr.rotation.y = -sd * 0.35; S.add(fr);
@@ -984,8 +991,18 @@ function buildStage() {
     for (let i = 0; i < 6; i++) { const la = box(1.6, 0.5, 1.1, black, sd * 14.5, 14 - i * 0.55, -17.4 + i * 0.05); la.rotation.x = i * 0.04; S.add(la); }
   }
   // crowd barrier
-  for (let x = -23; x <= 23; x += 2) { if (Math.abs(x) < 3) continue; S.add(box(1.9, 1.1, 0.12, M(0x9aa0a8, { metalness: .7, roughness: .4 }), x, 0.55, -16.4)); }
+  for (let x = -23; x <= 23; x += 2) { if (Math.abs(x) < 3 || x === 13) continue; S.add(box(1.9, 1.1, 0.12, M(0x9aa0a8, { metalness: .7, roughness: .4 }), x, 0.55, -16.4)); }
   for (const sd of [-1, 1]) for (let z = -16.4; z <= -12.2; z += 1.4) S.add(box(0.12, 1.1, 1.3, M(0x9aa0a8, { metalness: .7, roughness: .4 }), sd * 2.1, 0.55, z));
+  // grand staircase for Michael's entrance (front right of the stage)
+  { const SX = 13, gold = M(0xffd34d, { metalness: .9, roughness: .25 }), stepM = M(0x2a2a35, { metalness: 0.4, roughness: 0.3 }), carpet = M(0xb5121b, { roughness: .9 });
+    for (let i = 0; i < 5; i++) { const h = 0.45 * (i + 1), z = -13.45 - 0.9 * i;
+      S.add(box(2.2, h, 0.9, stepM, SX, h / 2, z)); S.add(box(1.5, 0.02, 0.9, carpet, SX, h + 0.01, z)); S.add(box(2.24, 0.06, 0.08, gold, SX, h - 0.02, z + 0.43)); }
+    const len = Math.hypot(4.5, 2.25), ang = Math.atan2(2.25, 4.5);
+    for (const dx of [-1.15, 1.15]) {
+      const rail = box(0.09, 0.09, len, gold, SX + dx, 1.125 + 0.95, -15.25); rail.rotation.x = ang; S.add(rail);
+      S.add(cyl(0.05, 0.05, 0.95, gold, SX + dx, 0.475, -13.0, 8)); S.add(cyl(0.05, 0.05, 0.95, gold, SX + dx, 2.25 + 0.475, -17.5, 8));
+      S.add(cyl(0.05, 0.05, 0.95, gold, SX + dx, 1.125 + 0.475, -15.25, 8));
+    } }
   // LED strip on stage front (animated)
   stage.strip = Glow(0xff3d9a, 0.8, 2.5);
   S.add(box(34, 0.18, 0.06, stage.strip, 0, 2.05, -17.47));
@@ -1014,9 +1031,15 @@ function buildStage() {
   for (let i = 0; i < 10; i++) { const s = sprite(smokeTex, 6); s.material.opacity = 0.25; s.material.color.set(0xd8c8ff); s.position.set(rand(-14, 14), 3, rand(-24, -18)); s.userData.v = rand(0.2, 0.5); stage.group.add(s); stage.smoke.push(s); }
   // artist & dancers
   const art = makeFigure(OUTFITS[save.outfit] ? save.outfit : 'classic'); art.scale.setScalar(1.6); art.position.set(0, 2.32, -19.5); stage.group.add(art); stage.artist = art;
-  const outs = ['dancer', 'dancer2', 'dancer2', 'dancer'];
-  [-9, -5, 5, 9].forEach((x, i) => { const d = makeFigure(outs[i]); d.scale.setScalar(1.45); d.position.set(x, 2.32, -22.5); stage.group.add(d); stage.dancers.push(d); });
+  setDancersOutfit(OUTFITS[save.outfit] ? save.outfit : 'classic');
   scene.add(stage.group);
+}
+// dancers wear the same outfit as Michael, but keep their own face and hair
+const DANCER_LOOKS = [{ skin: 0xc68642, hair: 0x2a1a10 }, { skin: 0xf1c27d, hair: 0x5a3a1a }, { skin: 0x8d5524, hair: 0x111111 }, { skin: 0xe0ac69, hair: 0x7a4a20 }];
+function setDancersOutfit(key) {
+  for (const d of stage.dancers) stage.group.remove(d);
+  stage.dancers.length = 0;
+  [-9, -5, 5, 9].forEach((x, i) => { const d = makeFigure({ ...OUTFITS[key], ...DANCER_LOOKS[i] }); d.scale.setScalar(1.45); d.position.set(x, 2.32, -22.5); stage.group.add(d); stage.dancers.push(d); });
 }
 let heeSprite = null;
 let heeTex = null; const mkHeeTex = () => canvasTex(512, 160, (x, w, h) => { x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = '96px Bungee, Impact, sans-serif'; x.lineWidth = 14; x.strokeStyle = '#2a0a40'; x.strokeText('HEE-HEE!', w / 2, h / 2 + 6); const g = x.createLinearGradient(0, 20, 0, 140); g.addColorStop(0, '#fff8d6'); g.addColorStop(0.5, '#ffd34d'); g.addColorStop(1, '#ff9d00'); x.fillStyle = g; x.fillText('HEE-HEE!', w / 2, h / 2 + 6); });
@@ -1531,6 +1554,41 @@ function mkFloatModel(f) {
     for (let i = 0; i < 9; i++) { const c = sph(0.35, M(0x52b788), 0, 0, 0, 8); c.scale.set(1.2, 0.8, 0.4); const a = rand(0, Math.PI * 2), e = rand(-1, 1); c.position.set(Math.cos(a) * 1.0 * Math.sqrt(1 - e * e), e * 1.0, Math.sin(a) * Math.sqrt(1 - e * e)); c.lookAt(0, 0, 0); globe.add(c); }
     for (let i = 0; i < 5; i++) { const dv = sph(0.12, M(0xffffff), rand(-1, 1), rand(4, 5), rand(-1, 1.5), 6); dv.scale.set(1.5, 0.6, 0.8); g.add(dv); }
     dyn.push((t) => { globe.rotation.y = t * 0.6; });
+  } else if (f.id === 'f_beatit') {
+    // flickering flames along both sides
+    const flames = [];
+    for (const x of [-1.0, 1.0]) for (const z of [-1.8, -0.5, 0.8, 1.9]) { const fl = mesh(new THREE.ConeGeometry(0.22, 1, 8), Glow(z % 2 ? 0xff3d00 : 0xffa200, 1.2, 2.4), x, 1.45, z); fl.userData.ph = rand(0, 6); g.add(fl); flames.push(fl); }
+    const sg3 = new THREE.Mesh(new THREE.PlaneGeometry(2, 0.7), signMat('BEAT IT', 0x111111, 0xff3d00)); sg3.position.set(0, 3.4, -2.0); st.add(sg3); st.add(cyl(0.05, 0.05, 2.4, M(0x333333), 0, 2.2, -2.05, 6));
+    dyn.push((t) => flames.forEach(fl => { const k = 0.8 + 0.35 * Math.sin(t * 9 + fl.userData.ph) + 0.15 * Math.sin(t * 23 + fl.userData.ph); fl.scale.set(1, k, 1); fl.position.y = 1.0 + 0.5 * k; }));
+  } else if (f.id === 'f_bad') {
+    // subway station: chrome poles and a red neon BAD sign
+    const chrome = M(0xdddddd, { metalness: 1, roughness: .15 });
+    for (const [x, z] of [[-1, -1.9], [1, -1.9], [-1, 1.9], [1, 1.9]]) st.add(cyl(0.06, 0.06, 2.6, chrome, x, 2.25, z, 8));
+    st.add(box(2.2, 0.08, 4, chrome, 0, 3.55, 0));
+    const neon = new THREE.Mesh(new THREE.PlaneGeometry(2.0, 0.8), signMat('BAD', 0x111111, 0xff2030)); neon.position.set(0, 3.1, -1.95); st.add(neon);
+    const neon2 = neon.clone(); neon2.rotation.y = Math.PI; neon2.position.z = -1.97; st.add(neon2);
+  } else if (f.id === 'f_j5') {
+    // the little brothers dance along, plus ABC blocks
+    const kids = [['dancer', -0.75, 0.6], ['dancer2', 0.75, 0.6], ['dancer2', -0.75, 1.5], ['dancer', 0.75, 1.5]];
+    for (const [o, x, z] of kids) { const k = makeFigure(o); k.scale.setScalar(0.75); k.position.set(x, 1.0, z); k.userData.move = 'groove'; g.add(k); extras.push(k); }
+    ['A', 'B', 'C'].forEach((L, i) => { const c = PALETTE[i * 2].getHex(); st.add(box(0.6, 0.6, 0.6, M(c), -0.7 + i * 0.7, 1.3, -1.9)); const fp = new THREE.Mesh(new THREE.PlaneGeometry(0.55, 0.55), signMat(L, c, 0xffffff)); fp.position.set(-0.7 + i * 0.7, 1.3, -1.59); st.add(fp); });
+  } else if (f.id === 'f_disco') {
+    // giant spinning mirror ball with coloured lights
+    const ball = new THREE.Group(); ball.position.set(0, 4.3, -1.4); g.add(ball);
+    ball.add(sph(0.85, M(0xe6e6e6, { metalness: 1, roughness: .12 }), 0, 0, 0, 12));
+    for (let i = 0; i < 14; i++) { const a = i / 14 * Math.PI * 2, e = Math.sin(i * 1.7) * 0.7; ball.add(sph(0.09, Glow(PALETTE[i % 6].getHex(), 1, 2.5), Math.cos(a) * 0.86 * Math.cos(e), Math.sin(e) * 0.86, Math.sin(a) * 0.86 * Math.cos(e), 6)); }
+    st.add(cyl(0.04, 0.04, 3, M(0x333333), 0, 2.4, -1.4, 6));
+    const tiles = [];
+    for (let i = 0; i < 3; i++) for (let j = 0; j < 2; j++) { const m = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: .3 }); const tl = box(0.62, 0.05, 0.75, m, -0.7 + i * 0.7, 1.02, 0.9 + j * 0.85); tl.userData.keep = true; st.add(tl); tiles.push(m); }
+    dyn.push((t, b) => { ball.rotation.y = t * 1.2; tiles.forEach((m, i) => { m.emissive.setHSL(((i * .21 + (b | 0) * .13) % 1), 1, .55); m.emissiveIntensity = ((i + (b | 0)) % 2 === 0) ? 1.6 : 0.3; }); });
+  } else if (f.id === 'f_bowl') {
+    // golden star, a giant football and sparkle fountains
+    const star = new THREE.Shape(); for (let i = 0; i < 10; i++) { const r = i % 2 ? 0.45 : 1.0, a = i / 10 * Math.PI * 2 + Math.PI / 2; i ? star.lineTo(Math.cos(a) * r, Math.sin(a) * r) : star.moveTo(Math.cos(a) * r, Math.sin(a) * r); }
+    const st3 = mesh(new THREE.ExtrudeGeometry(star, { depth: 0.2, bevelEnabled: false }), gold, 0, 3.9, -1.9); g.add(st3);
+    const ball = sph(0.5, M(0x7a3b12, { roughness: .6 }), 0.9, 1.5, 1.6, 14); ball.scale.set(0.7, 0.7, 1.2); st.add(ball);
+    const sparks = [];
+    for (const x of [-1.0, 1.0]) for (let i = 0; i < 6; i++) { const sp = sph(0.07, Glow(0xfff1a8, 1.5, 3), x, 1, -1.9, 6); sp.userData.ph = i / 6; sp.userData.x = x; g.add(sp); sparks.push(sp); }
+    dyn.push((t) => { st3.rotation.y = t * 1.5; sparks.forEach(sp => { const u = (t * 0.8 + sp.userData.ph) % 1; sp.position.set(sp.userData.x + Math.sin(u * 9) * 0.15, 1.1 + u * 2.4, -1.9 + Math.cos(u * 7) * 0.15); sp.scale.setScalar(1 - u * 0.7); }); });
   }
   bake(st);
   const fig = makeFigure(f.outfit); fig.scale.setScalar(1.25);
@@ -1954,7 +2012,7 @@ function updateParade(dt, t, b) {
     const [x, z, ry] = pathAt(f.s); f.x = x; f.z = z; f.m.position.set(x, 0, z); f.m.rotation.y = ry;
     const u = f.m.userData; poseFigure(u.fig, u.f.move, b, t);
     if (u.f.move === 'moonwalkStill') u.fig.rotation.y = Math.PI / 2 + Math.sin(t * 0.5) * 0.3;
-    u.extras.forEach((e, k) => poseFigure(e, 'thriller', b + k * 0.5, t));
+    u.extras.forEach((e, k) => poseFigure(e, e.userData.move || 'thriller', b + k * 0.5, t));
     u.dyn.forEach(fn => fn(t, b));
     if (Math.random() < dt * 3) CONF.emit(x + rand(-1, 1), 3.5, z + rand(-1, 1), rand(-2, 2), rand(3, 6), rand(-2, 2), pick(PALETTE), 5, 3, 0.94);
     P.near = f;
@@ -2303,6 +2361,7 @@ function setArtistOutfit(key) {
   const old = stage.artist; const f = makeFigure(key);
   f.scale.copy(old.scale); f.position.copy(old.position); f.rotation.copy(old.rotation);
   stage.group.remove(old); stage.group.add(f); stage.artist = f;
+  setDancersOutfit(key);
   save.outfit = key; persist();
   const x = f.position.x, z = f.position.z;
   for (let i = 0; i < 70; i++) FX.emit(x + rand(-.6, .6), rand(2.5, 5.5), z + rand(-.6, .6), rand(-3, 3), rand(-1, 4), rand(-3, 3), pick(PALETTE), rand(0.6, 1.2), 1, 0.92);
@@ -2361,6 +2420,7 @@ function startLevel(L, fresh = false) {
     G.ownedFloats = (lay.floats || []).filter(id => FLOAT[id]);
   }
   recomputeStats();
+  spawnPolice(); clearThief();
   curTab = 'eten'; renderTabs(); renderCards();
   $('title').classList.add('hidden'); $('hud').classList.remove('hidden'); $('build').classList.remove('hidden');
   $('lvName').textContent = `${L.em} ${L.free ? 'Vrije modus' : 'Level ' + L.n + ': ' + L.name}`;
@@ -2385,13 +2445,162 @@ function levelComplete() {
   $('stay').onclick = () => closeModal();
 }
 /* =========================================================
+   POLICE: officers patrol the festival grounds
+   ========================================================= */
+const POLICE_LOOKS = [{ skin: 0xc9946f, hair: 0x2a1a10 }, { skin: 0x8d5524, hair: 0x111111 }, { skin: 0xf1c27d, hair: 0x7a4a20 }, { skin: 0xe0ac69, hair: 0x3a2a1a }];
+const police = [];
+function policeCap(fig) {
+  const navy = M(0x101a3a, { roughness: .6 }), cap = new THREE.Group(); cap.position.set(0, 0.255, 0); cap.rotation.x = -0.1;
+  cap.add(cyl(0.122, 0.118, 0.06, navy, 0, 0.0, 0, 18));                                  // band
+  cap.add(cyl(0.122, 0.122, 0.012, M(0xffffff), 0, 0.005, 0, 18));                         // white stripe
+  cap.add(cyl(0.15, 0.125, 0.05, navy, 0, 0.05, 0.005, 18));                               // flat top
+  const visor = box(0.17, 0.012, 0.085, M(0x050505, { metalness: .6, roughness: .2 }), 0, -0.025, 0.12); visor.rotation.x = 0.25; cap.add(visor);
+  cap.add(sph(0.02, M(0xffd34d, { metalness: .9, roughness: .25 }), 0, 0.03, 0.125, 8));  // badge
+  fig.userData.parts.head.add(cap);
+}
+function walkCycle(fig, ph) {
+  poseFigure(fig, 'stand', 0, 0);
+  const p = fig.userData.parts, sw = Math.sin(ph);
+  p.legL.rotation.x = sw * 0.5; p.legR.rotation.x = -sw * 0.5; p.kneeL.rotation.x = Math.max(0, -sw) * 0.6; p.kneeR.rotation.x = Math.max(0, sw) * 0.6;
+  p.armL.rotation.x = -sw * 0.4; p.armR.rotation.x = sw * 0.4; p.hips.position.y = 1.0 + Math.abs(sw) * 0.04;
+}
+const toGX = x => clamp(Math.round(x / TS + (GW - 1) / 2), 0, GW - 1), toGZ = z => clamp(Math.round(z / TS + (GH - 1) / 2), 0, GH - 1);
+function gridPath(sx, sz, tx, tz) {
+  // breadth-first search over walkable cells, so officers walk around buildings
+  const prev = new Int32Array(GW * GH).fill(-1), start = idx(sx, sz), goal = idx(tx, tz), q = [start]; prev[start] = start;
+  for (let h = 0; h < q.length; h++) {
+    const c = q[h]; if (c === goal) break; const cx = c % GW, cz = (c / GW) | 0;
+    for (const [dx, dz] of DIRS4) { const nx = cx + dx, nz = cz + dz; if (!walk(nx, nz)) continue; const n = idx(nx, nz); if (prev[n] >= 0) continue; prev[n] = c; q.push(n); }
+  }
+  if (prev[goal] < 0) return null;
+  const path = []; for (let c = goal; c !== start; c = prev[c]) path.push([cellX(c % GW), cellZ((c / GW) | 0)]); return path.reverse();
+}
+function spawnPolice() {
+  for (const o of police) scene.remove(o.fig);
+  police.length = 0;
+  for (let i = 0; i < 4; i++) {
+    const fig = makeFigure({ ...OUTFITS.police, ...POLICE_LOOKS[i] }); fig.scale.setScalar(1.1); policeCap(fig); scene.add(fig);
+    let gx, gz; do { gx = (Math.random() * GW) | 0; gz = 4 + ((Math.random() * (GH - 4)) | 0); } while (!walk(gx, gz));
+    fig.position.set(cellX(gx), 0, cellZ(gz));
+    police.push({ fig, path: [], wait: rand(0, 3), ph: rand(0, 6) });
+  }
+}
+function updatePolice(dt) {
+  for (const o of police) {
+    const f = o.fig;
+    if (o.mode && o.mode !== 'patrol') continue; // busy chasing or escorting a thief
+    if (o.wait > 0) { o.wait -= dt; poseFigure(f, 'stand', 0, 0); f.userData.parts.head.rotation.y = Math.sin(o.wait * 1.3) * 0.5; continue; } // look around
+    if (!o.path.length) {
+      let gx = toGX(f.position.x), gz = toGZ(f.position.z); if (!walk(gx, gz)) [gx, gz] = nearestWalkable(gx, gz);
+      let tx, tz, tries = 0; do { tx = (Math.random() * GW) | 0; tz = (Math.random() * GH) | 0; } while (!walk(tx, tz) && ++tries < 40);
+      o.path = gridPath(gx, gz, tx, tz) || []; if (!o.path.length) { o.wait = rand(1, 3); continue; }
+    }
+    const [px, pz] = o.path[0], dx = px - f.position.x, dz = pz - f.position.z, d = Math.hypot(dx, dz), step = dt * 1.6;
+    if (d <= step) { f.position.x = px; f.position.z = pz; o.path.shift(); if (!o.path.length) o.wait = rand(2, 6); }
+    else { f.position.x += dx / d * step; f.position.z += dz / d * step; }
+    const ry = Math.atan2(dx, dz); let dr = ry - f.rotation.y; dr = Math.atan2(Math.sin(dr), Math.cos(dr)); f.rotation.y += dr * Math.min(1, dt * 8);
+    o.ph += dt * 7; walkCycle(f, o.ph);
+  }
+}
+/* =========================================================
+   THIEVES: someone steals from a shop, the nearest officer gives chase
+   ========================================================= */
+let thief = null, thiefT = 40;
+const EXIT_PATH = [[-1, 22], [-1, 32]];
+function makeThief() {
+  const f = makeFigure({ ...OUTFITS.thief }); f.scale.setScalar(1.05);
+  const h = f.userData.parts.head, black = M(0x111111, { roughness: .8 });
+  const beanie = mesh(new THREE.SphereGeometry(0.125, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2), black, 0, 0.17, -0.005); beanie.scale.set(1, 1.05, 1.1); h.add(beanie);
+  h.add(box(0.23, 0.05, 0.06, M(0x050505), 0, 0.152, 0.085));                         // robber's eye mask
+  const bag = sph(0.24, M(0x8b5a2b, { roughness: .9 }), 0.42, 0.75, -0.15, 10); bag.visible = false; f.add(bag); // loot bag
+  f.userData.bag = bag; scene.add(f); return f;
+}
+function moveAlong(fig, path, speed, dt) {
+  if (!path.length) return true;
+  const [px, pz] = path[0], dx = px - fig.position.x, dz = pz - fig.position.z, d = Math.hypot(dx, dz), step = speed * dt;
+  if (d <= step) { fig.position.x = px; fig.position.z = pz; path.shift(); }
+  else { fig.position.x += dx / d * step; fig.position.z += dz / d * step; }
+  if (d > 0.01) { let dr = Math.atan2(dx, dz) - fig.rotation.y; dr = Math.atan2(Math.sin(dr), Math.cos(dr)); fig.rotation.y += dr * Math.min(1, dt * 10); }
+  return !path.length;
+}
+function cuffed(fig) { const p = fig.userData.parts; p.armL.rotation.set(0.55, 0, 0.3); p.armR.rotation.set(0.55, 0, -0.3); p.elbowL.rotation.set(-0.5, 0, 0); p.elbowR.rotation.set(-0.5, 0, 0); }
+function pathToExit(fig) { let gx = toGX(fig.position.x), gz = toGZ(fig.position.z); if (!walk(gx, gz)) [gx, gz] = nearestWalkable(gx, gz); return [...(gridPath(gx, gz, ENTR[0][0], ENTR[0][1]) || []), ...EXIT_PATH.map(p => [...p])]; }
+function arrestThief(T, cop, msg) {
+  for (const o of T.chasers) if (o !== cop) { o.mode = 'patrol'; o.path = []; }
+  T.chasers = [cop]; T.cop = cop; cop.mode = 'chase';
+  T.state = 'arrested'; T.t = 0; T.fig.userData.bag.visible = false;
+  if (T.loot && isFinite(G.money)) G.money += T.loot;
+  for (const a of G.agents) a.mood = Math.min(100, a.mood + 3);
+  banner(msg, 4); audio.cheer(0.45); confettiBurst(T.fig.position.x, 3, T.fig.position.z, 30, 1.5);
+}
+const copDist = (o, f) => Math.hypot(o.fig.position.x - f.position.x, o.fig.position.z - f.position.z);
+function clearThief() { if (thief) { scene.remove(thief.fig); for (const o of thief.chasers) { o.mode = 'patrol'; o.path = []; } } thief = null; thiefT = rand(35, 50); }
+function startThief() {
+  const shops = G.buildings.filter(b => b.item.sale); if (!shops.length || !police.length) return;
+  const b = pick(shops), spots = neighborsOf(b).filter(([x, z]) => walk(x, z)); if (!spots.length) return;
+  const [tx, tz] = spots[0], route = gridPath(ENTR[0][0], ENTR[0][1], tx, tz); if (!route) return;
+  const fig = makeThief(); fig.position.set(-1, 0, 30);
+  thief = { fig, b, state: 'approach', path: [[-1, 22], [cellX(ENTR[0][0]), cellZ(ENTR[0][1])], ...route], t: 0, ph: 0, loot: 0, cop: null, chasers: [], repath: 0 };
+}
+function updateThief(dt) {
+  if (G.speed > 0 && !thief && G.clock < 24.5) { thiefT -= dt; if (thiefT <= 0) { thiefT = rand(70, 130); startThief(); } }
+  const T = thief; if (!T) return;
+  const f = T.fig; T.t += dt;
+  if (T.state === 'approach') {
+    T.ph += dt * 7; walkCycle(f, T.ph);
+    if (moveAlong(f, T.path, 1.8, dt)) { T.state = 'steal'; T.t = 0; f.rotation.y = Math.atan2(T.b.cx - f.position.x, T.b.cz - f.position.z); }
+  } else if (T.state === 'steal') {
+    poseFigure(f, 'stand', 0, 0); const p = f.userData.parts; p.armR.rotation.x = -1.2 + Math.sin(T.t * 12) * 0.2; // grabbing from the till
+    const near = police.find(o => (!o.mode || o.mode === 'patrol') && copDist(o, f) < 3.5);
+    if (T.t > 0.6 && near) { T.loot = 0; arrestThief(T, near, `👮 Op heterdaad betrapt bij ${T.b.item.name}!`); return; }
+    if (T.t > 1.5) {
+      T.loot = isFinite(G.money) ? Math.min(Math.max(0, G.money), Math.round(rand(60, 160))) : 100;
+      if (isFinite(G.money)) G.money -= T.loot;
+      f.userData.bag.visible = true; T.state = 'flee'; T.t = 0; T.path = pathToExit(f);
+      banner(`🚨 Dief! Er wordt gestolen bij ${T.b.item.name}!`, 4); audio.boom(20);
+      // the nearest free officer gives chase
+      let best = null, bd = Infinity; for (const o of police) { if (o.mode && o.mode !== 'patrol') continue; const d = Math.hypot(o.fig.position.x - f.position.x, o.fig.position.z - f.position.z); if (d < bd) { bd = d; best = o; } }
+      if (best) { best.mode = 'chase'; best.path = []; T.chasers.push(best); toast('👮 Een agent zet de achtervolging in!'); }
+    }
+  } else if (T.state === 'flee') {
+    T.ph += dt * 12; walkCycle(f, T.ph);
+    const done = moveAlong(f, T.path, 3.0, dt);
+    for (const o of police) if ((!o.mode || o.mode === 'patrol') && copDist(o, f) < 6) { o.mode = 'chase'; o.path = []; T.chasers.push(o); toast('👮 Nog een agent rent mee!'); }
+    T.repath -= dt; const repath = T.repath <= 0; if (repath) T.repath = 0.35;
+    for (const C of T.chasers) {
+      // chase: follow a fresh path through the grid, straight run when close or outside the grid
+      const cf = C.fig, dist = copDist(C, f);
+      if (dist < 2.5 || f.position.z > 16) C.path = [[f.position.x, f.position.z]];
+      else if (repath || !C.path.length) { let gx = toGX(cf.position.x), gz = toGZ(cf.position.z); if (!walk(gx, gz)) [gx, gz] = nearestWalkable(gx, gz); C.path = gridPath(gx, gz, toGX(f.position.x), toGZ(f.position.z)) || [[f.position.x, f.position.z]]; }
+      C.ph += dt * 13; walkCycle(cf, C.ph); moveAlong(cf, C.path, 3.9, dt);
+      if (dist < 0.9) { arrestThief(T, C, `👮 Gearresteerd! Je krijgt €${fmt(T.loot)} terug.`); break; }
+    }
+    if (T.state === 'flee' && done) {
+      toast(`😤 De dief is ontsnapt met €${fmt(T.loot)}!`);
+      scene.remove(f); for (const o of T.chasers) { o.mode = 'patrol'; o.path = []; } thief = null;
+    }
+  } else if (T.state === 'arrested') {
+    poseFigure(f, 'stand', 0, 0); cuffed(f); poseFigure(T.cop.fig, 'stand', 0, 0);
+    T.cop.fig.rotation.y = Math.atan2(f.position.x - T.cop.fig.position.x, f.position.z - T.cop.fig.position.z);
+    if (T.t > 2) { T.state = 'escort'; T.path = pathToExit(f); }
+  } else if (T.state === 'escort') {
+    // the officer walks the cuffed thief off the grounds
+    T.ph += dt * 6; walkCycle(f, T.ph); cuffed(f);
+    const done = moveAlong(f, T.path, 1.4, dt), cf = T.cop.fig;
+    const bx = f.position.x - Math.sin(f.rotation.y) * 0.9, bz = f.position.z - Math.cos(f.rotation.y) * 0.9;
+    T.cop.ph += dt * 6; walkCycle(cf, T.cop.ph); moveAlong(cf, [[bx, bz]], 2.2, dt);
+    const p = cf.userData.parts; p.armR.rotation.x = -0.9; p.elbowR.rotation.x = -0.4; // hand on the thief's shoulder
+    if (done) { toast('🚔 De dief is afgevoerd.'); scene.remove(f); T.cop.mode = 'patrol'; T.cop.path = []; thief = null; }
+  }
+}
+/* =========================================================
    LIMOUSINE: at 14:00 Michael drives in, stops at the stage and walks
    through a corridor of bodyguards up onto the stage. The parade follows.
    ========================================================= */
 const LPATH = [[0, 30], [0, 15], [23, 15], [23, -13.5]];                 // limo route: parade street, then along the side to the stage
-const MPATH = [[21.4, -12.5, 0], [18, -12.5, 0], [18, -16.8, 0], [18, -19.3, 2.32], [3, -19.5, 2.32]]; // Michael on foot: corridor → stairs → stage
-const GUARD_SPOTS = [[20.6, -11.2, 0], [19.1, -11.2, 0], [20.6, -13.8, 0], [16.8, -11.6, 0], [16.8, -13.1, 0], [16.8, -14.6, 0], [16.8, -16.1, 0], [19.2, -14.8, 0], [19.2, -16.3, 0],
-  [14, -18.3, 2.32], [11, -18.3, 2.32], [8, -18.3, 2.32], [14, -20.7, 2.32], [11, -20.7, 2.32], [8, -20.7, 2.32]];
+const MPATH = [[21.4, -12.2, 0], [13, -12.2, 0], [13, -13.0, 0], [13, -17.6, 2.32], [12.5, -19.4, 2.32], [3, -19.5, 2.32]]; // Michael on foot: corridor → staircase → stage
+const GUARD_SPOTS = [[20, -11, 0], [18, -11, 0], [16, -11, 0], [14.4, -11, 0], [20, -13.4, 0], [18, -13.4, 0], [16, -13.4, 0], [11.4, -11.6, 0], [11.4, -13.2, 0], [14.6, -13.2, 0],
+  [14.8, -18.6, 2.32], [14.8, -20.3, 2.32], [10, -18.4, 2.32], [7, -18.4, 2.32], [10, -20.6, 2.32], [7, -20.6, 2.32]];
 const LSEG = []; let LLEN = 0; for (let i = 0; i < LPATH.length - 1; i++) { const [x1, z1] = LPATH[i], [x2, z2] = LPATH[i + 1], l = Math.hypot(x2 - x1, z2 - z1); LSEG.push({ x1, z1, x2, z2, l, s: LLEN }); LLEN += l; }
 const MSEG = []; let MLEN = 0; for (let i = 0; i < MPATH.length - 1; i++) { const [x1, z1, y1] = MPATH[i], [x2, z2, y2] = MPATH[i + 1], l = Math.hypot(x2 - x1, z2 - z1); MSEG.push({ x1, z1, y1, x2, z2, y2, l, s: MLEN }); MLEN += l; }
 function segAt(segs, s) { for (const g of segs) if (s <= g.s + g.l) return [g, (s - g.s) / g.l]; const g = segs[segs.length - 1]; return [g, 1]; }
@@ -2426,10 +2635,17 @@ function placeGuards() {
     const f = makeFigure('guard'); f.scale.setScalar(1.15); f.position.set(x, y, z);
     const [px, pz] = nearestOnMPath(x, z); f.rotation.y = Math.atan2(px - x, pz - z); // face the corridor
     poseFigure(f, 'stand', 0, 0);
-    const p = f.userData.parts; p.armL.rotation.set(-0.5, 0, 0.35); p.armR.rotation.set(-0.5, 0, -0.35); p.elbowL.rotation.x = -1.3; p.elbowR.rotation.x = -1.3; // hands folded in front
     f.visible = false; scene.add(f); guards.push(f);
   }
-  guards.forEach(f => f.visible = true);
+  setGuardPose(false); guards.forEach(f => f.visible = true);
+}
+function setGuardPose(salute) {
+  for (const f of guards) {
+    const p = f.userData.parts;
+    p.armL.rotation.set(0.05, 0, -0.1); p.elbowL.rotation.set(-0.25, 0, 0);           // left arm calmly at the side
+    if (salute) { p.armR.rotation.set(-1.25, 0, 0.95); p.elbowR.rotation.set(-2.45, 0.75, 0); } // right hand to the brow: military salute
+    else { p.armR.rotation.set(0.05, 0, 0.1); p.elbowR.rotation.set(-0.25, 0, 0); }
+  }
 }
 function resetLimo() {
   G.limo = null; G.arrived = false;
@@ -2462,7 +2678,7 @@ function updateLimo(dt, t, b) {
     if (L.s >= LLEN - 0.01) { L.phase = 'door'; L.t = 0; banner('🕶️ De bewakers staan klaar voor de King of Pop!', 4); }
   } else if (L.phase === 'door') {
     if (L.t > 1.2) {
-      L.phase = 'walk'; L.s = 0; L.t = 0; limoModel.userData.fig.visible = false; limoWalker.visible = true;
+      L.phase = 'walk'; L.s = 0; L.t = 0; limoModel.userData.fig.visible = false; limoWalker.visible = true; setGuardPose(true);
       const [x, z] = MPATH[0];
       for (let i = 0; i < 50; i++) FX.emit(x + rand(-.5, .5), rand(1, 3), z + rand(-.5, .5), rand(-3, 3), rand(0, 4), rand(-3, 3), pick(PALETTE), rand(0.5, 1), 1, 0.92);
       audio.cheer(0.5);
@@ -2471,10 +2687,7 @@ function updateLimo(dt, t, b) {
     L.s = Math.min(MLEN, L.s + dt * 1.8);
     const [g, u] = segAt(MSEG, L.s), w = limoWalker;
     w.position.set(lerp(g.x1, g.x2, u), lerp(g.y1, g.y2, u), lerp(g.z1, g.z2, u)); w.rotation.y = Math.atan2(g.x2 - g.x1, g.z2 - g.z1);
-    poseFigure(w, 'stand', b, t);
-    const p = w.userData.parts, sw = Math.sin(L.t * 7); // simple walk cycle
-    p.legL.rotation.x = sw * 0.5; p.legR.rotation.x = -sw * 0.5; p.kneeL.rotation.x = Math.max(0, -sw) * 0.6; p.kneeR.rotation.x = Math.max(0, sw) * 0.6;
-    p.armL.rotation.x = -sw * 0.4; p.armR.rotation.x = sw * 0.4; p.hips.position.y = 1.0 + Math.abs(sw) * 0.04;
+    walkCycle(w, L.t * 7);
     if (Math.random() < dt * 3) CONF.emit(w.position.x + rand(-1, 1), w.position.y + 3, w.position.z + rand(-1, 1), rand(-2, 2), rand(2, 5), rand(-2, 2), pick(PALETTE), 5, 3, 0.94);
     if (L.s >= MLEN) { L.phase = 'onstage'; L.t = 0; limoWalker.visible = false; limoArrived(); }
   } else if (L.phase === 'onstage') {
@@ -2562,6 +2775,8 @@ function frame() {
     updateAgents(dt, rdt, b);
     updateParade(dt, t, b);
     updateLimo(dt, t, b);
+    updatePolice(dt);
+    updateThief(dt);
     G.shown = Math.round(G.present * G.level.scale);
     shownSmooth = lerp(shownSmooth, G.shown, Math.min(1, rdt * 4));
     if (!G.levelDone && G.level.goal && G.shown >= G.level.goal) levelComplete();
