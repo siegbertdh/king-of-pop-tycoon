@@ -344,6 +344,7 @@ const OUTFITS = {
   superbowl: { jacket: 0x121212, shirt: 0xffffff, pants: 0x121212, socks: 0xffffff, shoes: 0x111111, gold: 0xffc300, shades: true, glove: true },
   dancer: { jacket: 0x2b2d42, shirt: 0xff006e, pants: 0x2b2d42, socks: 0x2b2d42, shoes: 0x111111, skin: 0xc68642, hair: 0x2a1a10 },
   dancer2: { jacket: 0xf8f9fa, shirt: 0x3de8ff, pants: 0x2b2d42, socks: 0x2b2d42, shoes: 0x111111, skin: 0xf1c27d, hair: 0x5a3a1a },
+  guard: { jacket: 0x15151a, shirt: 0xffffff, pants: 0x15151a, socks: 0x15151a, shoes: 0x080808, tie: 0x111111, shades: true, skin: 0xa0704a, hair: 0x111111 },
   zombie: { jacket: 0x4a4e69, shirt: 0x6b705c, pants: 0x3d405b, socks: 0x3d405b, shoes: 0x222222, skin: 0x8fbf7f, hair: 0x2b2b2b },
 };
 const NEEDS = ['hunger', 'thirst', 'toilet', 'energy', 'fun'];
@@ -1948,7 +1949,6 @@ function updateParade(dt, t, b) {
   for (const f of P.list) {
     f.s += dt * 2.6;
     const vis = f.s > 0 && f.s < PLEN; f.on = vis; f.m.visible = vis;
-    if (f.id === 'limo' && f.s >= PLEN) limoArrived();
     if (f.s < PLEN) alive = true;
     if (!vis) continue;
     const [x, z, ry] = pathAt(f.s); f.x = x; f.z = z; f.m.position.set(x, 0, z); f.m.rotation.y = ry;
@@ -1959,7 +1959,7 @@ function updateParade(dt, t, b) {
     if (Math.random() < dt * 3) CONF.emit(x + rand(-1, 1), 3.5, z + rand(-1, 1), rand(-2, 2), rand(3, 6), rand(-2, 2), pick(PALETTE), 5, 3, 0.94);
     P.near = f;
   }
-  if (!alive) { if (G.limo) limoArrived(); G.parade = null; for (const f of P.list) f.m.visible = false; renderCards(); }
+  if (!alive) { G.parade = null; for (const f of P.list) f.m.visible = false; renderCards(); }
 }
 
 /* =========================================================
@@ -2385,9 +2385,17 @@ function levelComplete() {
   $('stay').onclick = () => closeModal();
 }
 /* =========================================================
-   LIMOUSINE: at 14:00 Michael rides the parade route and then goes on stage
+   LIMOUSINE: at 14:00 Michael drives in, stops at the stage and walks
+   through a corridor of bodyguards up onto the stage. The parade follows.
    ========================================================= */
-let limoModel = null;
+const LPATH = [[0, 30], [0, 15], [23, 15], [23, -13.5]];                 // limo route: parade street, then along the side to the stage
+const MPATH = [[21.4, -12.5, 0], [18, -12.5, 0], [18, -16.8, 0], [18, -19.3, 2.32], [3, -19.5, 2.32]]; // Michael on foot: corridor → stairs → stage
+const GUARD_SPOTS = [[20.6, -11.2, 0], [19.1, -11.2, 0], [20.6, -13.8, 0], [16.8, -11.6, 0], [16.8, -13.1, 0], [16.8, -14.6, 0], [16.8, -16.1, 0], [19.2, -14.8, 0], [19.2, -16.3, 0],
+  [14, -18.3, 2.32], [11, -18.3, 2.32], [8, -18.3, 2.32], [14, -20.7, 2.32], [11, -20.7, 2.32], [8, -20.7, 2.32]];
+const LSEG = []; let LLEN = 0; for (let i = 0; i < LPATH.length - 1; i++) { const [x1, z1] = LPATH[i], [x2, z2] = LPATH[i + 1], l = Math.hypot(x2 - x1, z2 - z1); LSEG.push({ x1, z1, x2, z2, l, s: LLEN }); LLEN += l; }
+const MSEG = []; let MLEN = 0; for (let i = 0; i < MPATH.length - 1; i++) { const [x1, z1, y1] = MPATH[i], [x2, z2, y2] = MPATH[i + 1], l = Math.hypot(x2 - x1, z2 - z1); MSEG.push({ x1, z1, y1, x2, z2, y2, l, s: MLEN }); MLEN += l; }
+function segAt(segs, s) { for (const g of segs) if (s <= g.s + g.l) return [g, (s - g.s) / g.l]; const g = segs[segs.length - 1]; return [g, 1]; }
+let limoModel = null, limoWalker = null; const guards = [];
 function buildLimo() {
   const g = new THREE.Group(), car = new THREE.Group(); car.rotation.y = Math.PI; g.add(car); // car front faces travel direction
   const black = M(0x0b0b12, { metalness: .85, roughness: .22 }), glass = M(0x161626, { metalness: .9, roughness: .08 });
@@ -2395,7 +2403,7 @@ function buildLimo() {
   car.add(box(2.1, 0.85, 10, black, 0, 0.78, 0));                // body
   car.add(box(1.9, 0.62, 6.6, glass, 0, 1.5, 0.3));              // long tinted windows
   car.add(box(1.94, 0.08, 2.6, black, 0, 1.84, 2.3));            // roof (rear part)
-  car.add(box(1.94, 0.08, 2.0, black, 0, 1.84, -2.0));           // roof (front part) — open sunroof in between
+  car.add(box(1.94, 0.08, 2.0, black, 0, 1.84, -2.0));           // roof (front part), open sunroof in between
   for (const z of [-1.4, 0.6, 2.6]) car.add(box(1.96, 0.62, 0.12, black, 0, 1.5, z)); // window pillars
   car.add(box(2.16, 0.07, 10.02, chrome, 0, 0.98, 0));           // chrome stripe
   car.add(box(1.4, 0.38, 0.06, chrome, 0, 0.72, -5.02));         // grille
@@ -2404,22 +2412,74 @@ function buildLimo() {
   for (const sd of [-1, 1]) { car.add(box(0.42, 0.18, 0.06, head, sd * 0.72, 0.92, -5.03)); car.add(box(0.36, 0.16, 0.06, tail, sd * 0.78, 0.92, 5.03)); }
   for (const sd of [-1, 1]) for (const z of [-3.6, 3.6]) { const w = cyl(0.42, 0.42, 0.3, tire, sd * 1.02, 0.42, z, 16); w.rotation.z = Math.PI / 2; car.add(w); const hub = cyl(0.2, 0.2, 0.32, chrome, sd * 1.02, 0.42, z, 10); hub.rotation.z = Math.PI / 2; car.add(hub); }
   const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.24), signMat('KING', 0xffd34d, 0x111111)); plate.position.set(0, 0.62, 5.13); car.add(plate);
-  const fig = makeFigure(OUTFITS[save.outfit] ? save.outfit : 'classic'); fig.scale.setScalar(1.1); fig.position.set(0, 0.7, 0.2); g.add(fig); // stands up through the sunroof
-  g.userData = { fig, extras: [], dyn: [], f: { move: 'point' }, limo: true };
-  g.visible = false; floatGroup.add(g); return g;
+  const fig = makeFigure(OUTFITS[save.outfit] ? save.outfit : 'classic'); fig.scale.setScalar(1.1); fig.position.set(0, 0.7, 0.2); g.add(fig); // waves from the sunroof
+  g.userData = { fig };
+  g.visible = false; scene.add(g); return g;
 }
-function resetLimo() { G.limo = false; G.arrived = false; if (limoModel) limoModel.visible = false; }
+function nearestOnMPath(x, z) {
+  let best = null, bd = Infinity;
+  for (const g of MSEG) { const dx = g.x2 - g.x1, dz = g.z2 - g.z1; const u = clamp(((x - g.x1) * dx + (z - g.z1) * dz) / (dx * dx + dz * dz || 1), 0, 1); const px = g.x1 + dx * u, pz = g.z1 + dz * u, d = Math.hypot(px - x, pz - z); if (d < bd) { bd = d; best = [px, pz]; } }
+  return best;
+}
+function placeGuards() {
+  if (!guards.length) for (const [x, z, y] of GUARD_SPOTS) {
+    const f = makeFigure('guard'); f.scale.setScalar(1.15); f.position.set(x, y, z);
+    const [px, pz] = nearestOnMPath(x, z); f.rotation.y = Math.atan2(px - x, pz - z); // face the corridor
+    poseFigure(f, 'stand', 0, 0);
+    const p = f.userData.parts; p.armL.rotation.set(-0.5, 0, 0.35); p.armR.rotation.set(-0.5, 0, -0.35); p.elbowL.rotation.x = -1.3; p.elbowR.rotation.x = -1.3; // hands folded in front
+    f.visible = false; scene.add(f); guards.push(f);
+  }
+  guards.forEach(f => f.visible = true);
+}
+function resetLimo() {
+  G.limo = null; G.arrived = false;
+  if (limoModel) limoModel.visible = false;
+  if (limoWalker) limoWalker.visible = false;
+  guards.forEach(f => f.visible = false);
+}
 function startLimo() {
-  G.limo = true;
-  if (limoModel) { floatGroup.remove(limoModel); limoModel = null; }
-  limoModel = buildLimo(); // rebuilt each time so Michael wears his current outfit
-  if (G.parade) { G.parade.list.forEach(f => f.s -= 13); G.parade.list.unshift({ id: 'limo', m: limoModel, s: 0, x: 0, z: 30, on: false }); }
-  else {
-    const list = [{ id: 'limo', m: limoModel, s: 0, x: 0, z: 30, on: false }];
-    FLOATS.map(f => f.id).forEach((id, k) => { let m = floatModels[id]; if (!m) { m = floatModels[id] = mkFloatModel(FLOAT[id]); floatGroup.add(m); } m.visible = false; list.push({ id, m, s: -13 - k * 7.5, x: 0, z: 30, on: false }); });
+  if (limoModel) scene.remove(limoModel);
+  limoModel = buildLimo(); limoModel.visible = true; // rebuilt so Michael wears his current outfit
+  if (limoWalker) scene.remove(limoWalker);
+  limoWalker = makeFigure(OUTFITS[save.outfit] ? save.outfit : 'classic'); limoWalker.scale.setScalar(1.1); limoWalker.visible = false; scene.add(limoWalker);
+  placeGuards();
+  G.limo = { phase: 'drive', s: 0, t: 0 };
+  // the parade follows behind the limo
+  if (!G.parade) {
+    const list = FLOATS.map((f, k) => { const id = f.id; let m = floatModels[id]; if (!m) { m = floatModels[id] = mkFloatModel(FLOAT[id]); floatGroup.add(m); } m.visible = false; return { id, m, s: -13 - k * 7.5, x: 0, z: 30, on: false }; });
     G.parade = { list, near: null, t: 0 }; renderCards();
   }
   banner('🚗 14:00 — Michael Jackson rijdt binnen, de parade volgt!', 5); audio.fanfare(); audio.cheer(0.5);
+}
+function updateLimo(dt, t, b) {
+  const L = G.limo; if (!L) return;
+  L.t += dt;
+  if (L.phase === 'drive') {
+    const left = LLEN - L.s; L.s = Math.min(LLEN, L.s + dt * 2.6 * clamp(left / 4, 0.25, 1)); // slow down at the end
+    const [g, u] = segAt(LSEG, L.s);
+    limoModel.position.set(lerp(g.x1, g.x2, u), 0, lerp(g.z1, g.z2, u)); limoModel.rotation.y = Math.atan2(g.x2 - g.x1, g.z2 - g.z1);
+    poseFigure(limoModel.userData.fig, 'point', b, t);
+    if (L.s >= LLEN - 0.01) { L.phase = 'door'; L.t = 0; banner('🕶️ De bewakers staan klaar voor de King of Pop!', 4); }
+  } else if (L.phase === 'door') {
+    if (L.t > 1.2) {
+      L.phase = 'walk'; L.s = 0; L.t = 0; limoModel.userData.fig.visible = false; limoWalker.visible = true;
+      const [x, z] = MPATH[0];
+      for (let i = 0; i < 50; i++) FX.emit(x + rand(-.5, .5), rand(1, 3), z + rand(-.5, .5), rand(-3, 3), rand(0, 4), rand(-3, 3), pick(PALETTE), rand(0.5, 1), 1, 0.92);
+      audio.cheer(0.5);
+    }
+  } else if (L.phase === 'walk') {
+    L.s = Math.min(MLEN, L.s + dt * 1.8);
+    const [g, u] = segAt(MSEG, L.s), w = limoWalker;
+    w.position.set(lerp(g.x1, g.x2, u), lerp(g.y1, g.y2, u), lerp(g.z1, g.z2, u)); w.rotation.y = Math.atan2(g.x2 - g.x1, g.z2 - g.z1);
+    poseFigure(w, 'stand', b, t);
+    const p = w.userData.parts, sw = Math.sin(L.t * 7); // simple walk cycle
+    p.legL.rotation.x = sw * 0.5; p.legR.rotation.x = -sw * 0.5; p.kneeL.rotation.x = Math.max(0, -sw) * 0.6; p.kneeR.rotation.x = Math.max(0, sw) * 0.6;
+    p.armL.rotation.x = -sw * 0.4; p.armR.rotation.x = sw * 0.4; p.hips.position.y = 1.0 + Math.abs(sw) * 0.04;
+    if (Math.random() < dt * 3) CONF.emit(w.position.x + rand(-1, 1), w.position.y + 3, w.position.z + rand(-1, 1), rand(-2, 2), rand(2, 5), rand(-2, 2), pick(PALETTE), 5, 3, 0.94);
+    if (L.s >= MLEN) { L.phase = 'onstage'; L.t = 0; limoWalker.visible = false; limoArrived(); }
+  } else if (L.phase === 'onstage') {
+    if (L.t > 8) { guards.forEach(f => f.visible = false); L.phase = 'done'; } // guards leave, limo stays parked
+  }
 }
 function limoArrived() {
   if (G.arrived) return;
@@ -2501,6 +2561,7 @@ function frame() {
     }
     updateAgents(dt, rdt, b);
     updateParade(dt, t, b);
+    updateLimo(dt, t, b);
     G.shown = Math.round(G.present * G.level.scale);
     shownSmooth = lerp(shownSmooth, G.shown, Math.min(1, rdt * 4));
     if (!G.levelDone && G.level.goal && G.shown >= G.level.goal) levelComplete();
