@@ -920,7 +920,26 @@ function persist() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save));
 const ledCanvas = document.createElement('canvas'); ledCanvas.width = 512; ledCanvas.height = 256;
 const ledCtx = ledCanvas.getContext('2d');
 const ledTex = new THREE.CanvasTexture(ledCanvas); ledTex.colorSpace = THREE.SRGBColorSpace;
+let ledMsgUntil = 0; // when a thief is caught the big screens show a police message
+function drawCriminalMsg(t) {
+  const x = ledCtx, w = 512, h = 256, on = Math.floor(t * 4) % 2 === 0;
+  x.fillStyle = on ? '#b30018' : '#0b2fa8'; x.fillRect(0, 0, w / 2, h); x.fillStyle = on ? '#0b2fa8' : '#b30018'; x.fillRect(w / 2, 0, w / 2, h); // flashing red/blue
+  x.fillStyle = 'rgba(0,0,0,.35)'; x.fillRect(0, 0, w, h);
+  x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.fillStyle = '#ffffff'; x.font = `40px ${EMOJI_FONT}`; x.fillText('🚨', 40, 40); x.fillText('🚨', w - 40, 40); x.fillText('👮', 40, h - 38); x.fillText('🚔', w - 40, h - 38);
+  const fit = (txt, max, px) => { x.font = `${px}px Bungee, Impact, sans-serif`; const m = x.measureText(txt).width; return m > max ? px * max / m : px; };
+  const pop = 1 + 0.06 * Math.sin(t * 10);
+  x.save(); x.translate(w / 2, 0); x.scale(pop, pop);
+  x.lineWidth = 10; x.strokeStyle = '#111'; x.fillStyle = '#ffffff';
+  x.font = `${fit('WE GOT A', 380, 52)}px Bungee, Impact, sans-serif`; x.strokeText('WE GOT A', 0, 82 / pop); x.fillText('WE GOT A', 0, 82 / pop);
+  const g = x.createLinearGradient(0, 120, 0, 190); g.addColorStop(0, '#fff8d6'); g.addColorStop(1, '#ffd34d');
+  x.font = `${fit('SMOOTH CRIMINAL!', 440, 52)}px Bungee, Impact, sans-serif`; x.fillStyle = g; x.shadowColor = '#ffd34d'; x.shadowBlur = 18;
+  x.strokeText('SMOOTH CRIMINAL!', 0, 152 / pop); x.fillText('SMOOTH CRIMINAL!', 0, 152 / pop);
+  x.restore(); x.shadowBlur = 0;
+  ledTex.needsUpdate = true;
+}
 function drawLED(t, b) {
+  if (performance.now() < ledMsgUntil) return drawCriminalMsg(t);
   const x = ledCtx, w = 512, h = 256, hue = (t * 25) % 360;
   const g = x.createLinearGradient(0, 0, w, h); g.addColorStop(0, `hsl(${hue},85%,22%)`); g.addColorStop(1, `hsl(${(hue + 70) % 360},85%,10%)`);
   x.fillStyle = g; x.fillRect(0, 0, w, h);
@@ -1992,12 +2011,47 @@ function pathAt(s) {
   const g = PSEG[PSEG.length - 1]; return [g.x2, g.z2, 0];
 }
 const floatModels = {};
+/* =========================================================
+   POLICE MOTORBIKES: escort every parade, one in front and one at the back
+   ========================================================= */
+function mkPoliceMoto() {
+  const g = new THREE.Group(), bike = new THREE.Group(); g.add(bike); // front faces +z (travel direction)
+  const white = M(0xf4f6fb, { metalness: .4, roughness: .3 }), blueM = M(0x1d4ed8, { roughness: .4 }), black = M(0x111111, { roughness: .8 }), chrome = M(0xdddddd, { metalness: 1, roughness: .15 });
+  for (const z of [-0.65, 0.65]) { const w = cyl(0.32, 0.32, 0.14, black, 0, 0.32, z, 16); w.rotation.z = Math.PI / 2; bike.add(w); const h = cyl(0.12, 0.12, 0.16, chrome, 0, 0.32, z, 10); h.rotation.z = Math.PI / 2; bike.add(h); }
+  bike.add(box(0.42, 0.42, 1.2, white, 0, 0.62, 0));               // body
+  bike.add(box(0.44, 0.12, 1.22, blueM, 0, 0.6, 0));                // blue stripe
+  bike.add(box(0.36, 0.12, 0.6, black, 0, 0.88, -0.2));             // seat
+  bike.add(box(0.4, 0.3, 0.4, white, 0, 0.95, 0.42));               // tank / fairing
+  const scr = box(0.42, 0.32, 0.03, M(0x9fd3ff, { metalness: .2, roughness: .05, transparent: true, opacity: .55 }), 0, 1.2, 0.62); scr.rotation.x = -0.35; bike.add(scr);
+  bike.add(box(0.7, 0.04, 0.04, chrome, 0, 1.08, 0.5));             // handlebar
+  bike.add(box(0.14, 0.1, 0.04, M(0xffffee, { emissive: 0xffffcc, emissiveIntensity: 1.2 }), 0, 0.8, 0.63)); // headlight
+  bike.add(cyl(0.02, 0.02, 0.6, chrome, 0, 1.15, -0.62, 6));         // light pole
+  const lamp = new THREE.MeshStandardMaterial({ color: 0x2060ff, emissive: 0x2060ff, emissiveIntensity: 3, toneMapped: false });
+  bike.add(sph(0.09, lamp, 0, 1.5, -0.62, 10));                      // blue flashing light
+  for (const sd of [-1, 1]) { const sg = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 0.2), signMat('POLITIE', 0x1d4ed8, 0xffffff)); sg.position.set(sd * 0.225, 0.6, 0); sg.rotation.y = sd * Math.PI / 2; bike.add(sg); }
+  // rider: police officer with a white helmet
+  const fig = makeFigure({ ...OUTFITS.police, skin: 0xc9946f }); fig.position.set(0, -0.05, -0.15); g.add(fig);
+  const head = fig.userData.parts.head;
+  const helmet = mesh(new THREE.SphereGeometry(0.135, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.6), white, 0, 0.16, -0.005); helmet.scale.set(1, 1.05, 1.12); head.add(helmet);
+  head.add(box(0.2, 0.05, 0.03, M(0x1d4ed8), 0, 0.155, 0.135));      // dark visor
+  const ride = () => { const p = fig.userData.parts; p.legL.rotation.set(-1.35, 0, -0.12); p.legR.rotation.set(-1.35, 0, 0.12); p.kneeL.rotation.x = 1.35; p.kneeR.rotation.x = 1.35; p.armL.rotation.set(-0.95, 0, 0.12); p.armR.rotation.set(-0.95, 0, -0.12); p.elbowL.rotation.x = -0.35; p.elbowR.rotation.x = -0.35; p.torso.rotation.x = 0.12; };
+  g.userData = { fig, extras: [], dyn: [(t) => { ride(); lamp.emissiveIntensity = Math.floor(t * 5) % 2 ? 0.3 : 3.5; }], f: { move: 'stand' } };
+  g.visible = false; floatGroup.add(g); return g;
+}
+function paradeWithEscort(list) {
+  // police motorbike in front of the first float and behind the last one
+  for (const id of ['moto_front', 'moto_back']) if (!floatModels[id]) floatModels[id] = mkPoliceMoto();
+  const first = list.length ? Math.max(...list.map(f => f.s)) : 0, last = list.length ? Math.min(...list.map(f => f.s)) : 0;
+  return [{ id: 'moto_front', m: floatModels.moto_front, s: first + 6, x: 0, z: 30, on: false }, ...list, { id: 'moto_back', m: floatModels.moto_back, s: last - 6, x: 0, z: 30, on: false }];
+}
+
 function startParade(auto = false) {
   if (G.parade) return;
   if (!G.ownedFloats.length) { if (!auto) toast('Koop eerst een praalwagen in het tabblad 🎉 Parade'); return; }
   if (G.paradeCD > 0 && !auto) { toast(`Nog ${Math.ceil(G.paradeCD)}s wachten voor de volgende parade`); return; }
   const list = G.ownedFloats.map((id, k) => { let m = floatModels[id]; if (!m) { m = floatModels[id] = mkFloatModel(FLOAT[id]); floatGroup.add(m); } m.visible = false; return { id, m, s: -k * 7.5, x: 0, z: 30, on: false }; });
-  G.parade = { list, near: null, t: 0 }; G.paradeHeld = true; G.paradeCD = 75;
+  const escorted = paradeWithEscort(list);
+  G.parade = { list: escorted, near: null, t: 0 }; G.paradeHeld = true; G.paradeCD = 75;
   banner('🎉 De Michael Jackson-parade begint!', 5); audio.fanfare(); audio.cheer(0.4);
   renderCards();
 }
@@ -2528,20 +2582,35 @@ function sirenSound() {
   gn.gain.setValueAtTime(0.0001, t); gn.gain.exponentialRampToValueAtTime(0.05, t + 0.05); gn.gain.setValueAtTime(0.05, t + 2.0); gn.gain.exponentialRampToValueAtTime(0.0001, t + 2.1);
   o.connect(gn); gn.connect(audio.sfx); o.start(t); o.stop(t + 2.15);
 }
-function callPoliceCar() {
+function nearestOnParade(x, z) {
+  // closest point on the parade street, plus a roadside spot next to it on the visitor's side
+  let best = null;
+  for (const g of PSEG) {
+    const dx = g.x2 - g.x1, dz = g.z2 - g.z1, u = clamp(((x - g.x1) * dx + (z - g.z1) * dz) / (g.l * g.l), 0, 1);
+    const px = g.x1 + dx * u, pz = g.z1 + dz * u, d = Math.hypot(px - x, pz - z);
+    if (!best || d < best.d) { let nx = -dz / g.l, nz = dx / g.l; if ((x - px) * nx + (z - pz) * nz < 0) { nx = -nx; nz = -nz; } best = { d, s: g.s + g.l * u, px, pz, sx: px + nx * 1.7, sz: pz + nz * 1.7, bx: px + nx * 1.15, bz: pz + nz * 1.15 }; }
+  }
+  return best;
+}
+function carAt(s) { if (s <= PLEN) return pathAt(s); return [0, 30 + (s - PLEN), 0]; } // past the end: straight out along the entrance road
+function callPoliceCar(sPick) {
   if (!policeCar.g) policeCar.g = buildPoliceCar();
-  const g = policeCar.g; g.visible = true; g.position.set(3.4, 0, 62); g.rotation.y = Math.PI; // arriving up the road towards the gate
-  policeCar.state = 'arrive'; policeCar.t = 0; sirenSound();
+  const P = policeCar; P.g.visible = true; P.s = -14; P.s0 = -14; P.sPick = sPick; P.speed = 0;
+  const [x, z, ry] = carAt(P.s); P.g.position.set(x, 0, z); P.g.rotation.y = ry;
+  P.state = 'arrive'; P.t = 0; sirenSound();
 }
 function updatePoliceCar(dt, t) {
   const P = policeCar; if (!P.g || P.state === 'off') return;
   P.t += dt;
   const on = Math.floor(t * 6) % 2 === 0; P.red.emissiveIntensity = on ? 3 : 0.2; P.blue.emissiveIntensity = on ? 0.2 : 3; // flashing lights
-  const g = P.g;
-  if (P.state === 'arrive') { const u = Math.min(1, P.t / 6), e = 1 - Math.pow(1 - u, 3); g.position.z = lerp(62, 24.5, e); if (u >= 1) P.state = 'parked'; }
-  else if (P.state === 'turn') { const u = Math.min(1, P.t / 1.6); g.rotation.y = lerp(Math.PI, 0, u); g.position.x = 3.4 + Math.sin(u * Math.PI) * 0.6; if (u >= 1) { P.state = 'leave'; P.t = 0; sirenSound(); } }
-  else if (P.state === 'leave') { g.position.z += dt * (3 + P.t * 4); if (g.position.z > 80) { g.visible = false; P.state = 'off'; } }
+  if (P.state === 'arrive') { const left = P.sPick - P.s; P.speed = Math.min(15, Math.max(1, left * 2.5)); P.s = Math.min(P.sPick, P.s + P.speed * dt); if (P.s >= P.sPick - 0.01) P.state = 'parked'; }
+  else if (P.state === 'leave') { P.speed = Math.min(15, P.speed + dt * 9); P.s += P.speed * dt; if (P.s > PLEN + 35) { P.g.visible = false; P.state = 'off'; } }
+  if (P.state === 'arrive' || P.state === 'leave') {
+    const [x, z, ry] = carAt(P.s); P.g.position.x = x; P.g.position.z = z;
+    let dr = ry - P.g.rotation.y; dr = Math.atan2(Math.sin(dr), Math.cos(dr)); P.g.rotation.y += dr * Math.min(1, dt * 6); // smooth turns at corners
+  }
 }
+const streetFree = () => !G.parade && !(G.limo && G.limo.phase === 'drive') && policeCar.state === 'off';
 /* =========================================================
    THIEVES: someone steals from a shop, the nearest officer gives chase
    ========================================================= */
@@ -2568,6 +2637,7 @@ function pathToExit(fig) { let gx = toGX(fig.position.x), gz = toGZ(fig.position
 function arrestThief(T, cop, msg) {
   for (const o of T.chasers) if (o !== cop) { o.mode = 'patrol'; o.path = []; }
   T.chasers = [cop]; T.cop = cop; cop.mode = 'chase';
+  ledMsgUntil = performance.now() + 7000; // 'WE GOT A SMOOTH CRIMINAL!' on the big screens
   T.state = 'arrested'; T.t = 0; T.fig.userData.bag.visible = false;
   if (T.loot && isFinite(G.money)) G.money += T.loot;
   for (const a of G.agents) a.mood = Math.min(100, a.mood + 3);
@@ -2622,25 +2692,33 @@ function updateThief(dt) {
   } else if (T.state === 'arrested') {
     poseFigure(f, 'stand', 0, 0); cuffed(f); poseFigure(T.cop.fig, 'stand', 0, 0);
     T.cop.fig.rotation.y = Math.atan2(f.position.x - T.cop.fig.position.x, f.position.z - T.cop.fig.position.z);
-    if (T.t > 2) { T.state = 'escort'; T.path = pathToExit(f); T.path[T.path.length - 1] = [2.1, 21.2]; }
+    if (T.t > 2) {
+      T.pick = nearestOnParade(f.position.x, f.position.z);
+      let gx = toGX(f.position.x), gz = toGZ(f.position.z); if (!walk(gx, gz)) [gx, gz] = nearestWalkable(gx, gz);
+      let tx = toGX(T.pick.sx), tz = toGZ(T.pick.sz); if (!walk(tx, tz)) [tx, tz] = nearestWalkable(tx, tz);
+      T.state = 'escort'; T.path = [...(gridPath(gx, gz, tx, tz) || []), [T.pick.sx, T.pick.sz]]; T.called = false;
+    }
   } else if (T.state === 'escort') {
+    if (!T.called && streetFree()) { T.called = true; callPoliceCar(T.pick.s); toast('🚓 De politieauto rijdt over de paradestraat!'); }
     // the officer walks the cuffed thief off the grounds
     T.ph += dt * 6; walkCycle(f, T.ph); cuffed(f);
     const done = moveAlong(f, T.path, 1.4, dt), cf = T.cop.fig;
     const bx = f.position.x - Math.sin(f.rotation.y) * 0.9, bz = f.position.z - Math.cos(f.rotation.y) * 0.9;
     T.cop.ph += dt * 6; walkCycle(cf, T.cop.ph); moveAlong(cf, [[bx, bz]], 2.2, dt);
     const p = cf.userData.parts; p.armR.rotation.x = -0.9; p.elbowR.rotation.x = -0.4; // hand on the thief's shoulder
-    if (done) { T.state = 'waitcar'; T.t = 0; callPoliceCar(); toast('🚓 De politieauto komt eraan!'); }
+    if (done) { T.state = 'waitcar'; T.t = 0; }
   } else if (T.state === 'waitcar') {
-    // thief and officer wait at the roadside, facing the arriving car
-    poseFigure(f, 'stand', 0, 0); cuffed(f); f.rotation.y = 0;
-    poseFigure(T.cop.fig, 'stand', 0, 0); T.cop.fig.rotation.y = 0;
-    if (policeCar.state === 'parked') { T.state = 'board'; T.path = [[2.4, 23.6]]; }
+    // thief and officer wait at the side of the parade street, facing the road
+    const face = Math.atan2(T.pick.px - f.position.x, T.pick.pz - f.position.z);
+    poseFigure(f, 'stand', 0, 0); cuffed(f); f.rotation.y = face;
+    poseFigure(T.cop.fig, 'stand', 0, 0); T.cop.fig.rotation.y = face;
+    if (!T.called && streetFree()) { T.called = true; callPoliceCar(T.pick.s); toast('🚓 De politieauto rijdt over de paradestraat!'); }
+    if (T.called && policeCar.state === 'parked') { T.state = 'board'; T.path = [[T.pick.bx, T.pick.bz]]; }
   } else if (T.state === 'board') {
     T.ph += dt * 6; walkCycle(f, T.ph); cuffed(f);
     if (moveAlong(f, T.path, 1.2, dt)) {
       scene.remove(f); toast('🚔 De dief zit in de politieauto. Hij wordt afgevoerd!');
-      T.cop.mode = 'patrol'; T.cop.path = []; thief = null; policeCar.state = 'turn'; policeCar.t = 0;
+      T.cop.mode = 'patrol'; T.cop.path = []; thief = null; policeCar.state = 'leave'; policeCar.t = 0; sirenSound();
     }
   }
 }
@@ -2714,7 +2792,8 @@ function startLimo() {
   // the parade follows behind the limo
   if (!G.parade) {
     const list = FLOATS.map((f, k) => { const id = f.id; let m = floatModels[id]; if (!m) { m = floatModels[id] = mkFloatModel(FLOAT[id]); floatGroup.add(m); } m.visible = false; return { id, m, s: -13 - k * 7.5, x: 0, z: 30, on: false }; });
-    G.parade = { list, near: null, t: 0 }; renderCards();
+    const escorted = paradeWithEscort(list); escorted[0].s = 8; // front bike leads the limousine
+    G.parade = { list: escorted, near: null, t: 0 }; renderCards();
   }
   banner('🚗 14:00 — Michael Jackson rijdt binnen, de parade volgt!', 5); audio.fanfare(); audio.cheer(0.5);
 }
