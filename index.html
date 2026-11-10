@@ -1770,6 +1770,45 @@ const PANTS = [0x1d3557, 0x2b2d42, 0x111111, 0x415a77, 0x3d5a80, 0x6c757d, 0xe9e
 const HAIRC = [0x0b0806, 0x2a1a10, 0x4a2c17, 0x6b4423, 0xd9b26f, 0xa0522d, 0x888888, 0xff70a6];
 const SHOES = [0xffffff, 0x111111, 0xe63946, 0x1d3557, 0xf1faee];
 function applyColors(i, a) { for (const k in VIS_COL) { IM[k].setColorAt(i, a.col[VIS_COL[k]]); IM[k].instanceColor.needsUpdate = true; } }
+/* =========================================================
+   PETS: a few visitors walk a dog on a leash
+   ========================================================= */
+const pets = new Set(); let frameNo = 0;
+function makeDog() {
+  const g = new THREE.Group(), fur = M(pick([0x8b5a2b, 0xd9a35f, 0x2b2118, 0xf2ead8, 0x6b4a2f])), dark = M(0x1a1410);
+  g.add(box(0.2, 0.17, 0.42, fur, 0, 0.3, 0));                               // body
+  const head = new THREE.Group(); head.position.set(0, 0.42, 0.24); g.add(head);
+  head.add(box(0.16, 0.15, 0.16, fur, 0, 0, 0)); head.add(box(0.09, 0.07, 0.1, fur, 0, -0.03, 0.11)); head.add(box(0.04, 0.03, 0.03, dark, 0, -0.01, 0.17)); // head, snout, nose
+  for (const sd of [-1, 1]) { const ear = box(0.04, 0.08, 0.05, dark, sd * 0.07, 0.07, -0.02); ear.rotation.z = sd * 0.3; head.add(ear); }
+  g.add(box(0.21, 0.035, 0.035, M(0xe63946), 0, 0.38, 0.17));               // red collar
+  const legs = [];
+  for (const [x, z] of [[-0.07, 0.15], [0.07, 0.15], [-0.07, -0.15], [0.07, -0.15]]) { const pv = new THREE.Group(); pv.position.set(x, 0.24, z); pv.add(box(0.05, 0.24, 0.05, fur, 0, -0.12, 0)); g.add(pv); legs.push(pv); }
+  const tail = new THREE.Group(); tail.position.set(0, 0.36, -0.21); tail.add(box(0.035, 0.035, 0.18, fur, 0, 0.05, -0.08)); tail.rotation.x = 0.6; g.add(tail);
+  const leashGeo = new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+  const leash = new THREE.Line(leashGeo, new THREE.LineBasicMaterial({ color: 0x222222 })); leash.frustumCulled = false; scene.add(leash);
+  g.userData = { legs, tail, head, leash, f: -1, ph: rand(0, 6) };
+  g.visible = false; scene.add(g); pets.add(g); return g;
+}
+function updatePets(dt) {
+  for (const g of pets) {
+    const u = g.userData, show = u.f === frameNo; g.visible = show; u.leash.visible = show; if (!show) continue;
+    // trot beside the owner: a little to the side and slightly ahead
+    const s = u.sc || 1, tx = u.ax + Math.cos(u.ry) * 0.5 * s + Math.sin(u.ry) * 0.35, tz = u.az - Math.sin(u.ry) * 0.5 * s + Math.cos(u.ry) * 0.35;
+    if (!u.init) { g.position.set(tx, 0, tz); g.rotation.y = u.ry; u.init = true; }
+    const dx = tx - g.position.x, dz = tz - g.position.z, d = Math.hypot(dx, dz);
+    g.position.x += dx * Math.min(1, dt * 6); g.position.z += dz * Math.min(1, dt * 6);
+    const moving = d > 0.03; let dr = (moving ? Math.atan2(dx, dz) : u.ry) - g.rotation.y; dr = Math.atan2(Math.sin(dr), Math.cos(dr)); g.rotation.y += dr * Math.min(1, dt * 8);
+    u.ph += dt * (moving ? 14 : 3);
+    u.legs.forEach((l, k) => l.rotation.x = moving ? Math.sin(u.ph + (k % 2 ? Math.PI : 0) + (k > 1 ? Math.PI / 2 : 0)) * 0.6 : 0);
+    u.tail.rotation.y = Math.sin(u.ph * 1.8) * 0.6;                         // wagging
+    u.head.rotation.y = moving ? 0 : Math.sin(u.ph * 0.5) * 0.4;
+    // leash from the collar to the owner's hand
+    const p = u.leash.geometry.attributes.position.array, c = Math.cos(g.rotation.y), sn = Math.sin(g.rotation.y);
+    p[0] = g.position.x + sn * 0.17; p[1] = 0.39; p[2] = g.position.z + c * 0.17;
+    p[3] = u.ax + Math.cos(u.ry) * 0.2 * s; p[4] = 0.85 * s; p[5] = u.az - Math.sin(u.ry) * 0.2 * s;
+    u.leash.geometry.attributes.position.needsUpdate = true;
+  }
+}
 function spawnAgent() {
   const i = G.agents.length; if (i >= MAXA) return;
   const fan = Math.random() < 0.14, thriller = !fan && Math.random() < 0.08;
@@ -1780,16 +1819,20 @@ function spawnAgent() {
     hat: fan || Math.random() < 0.06, hair: fan ? 'hShort' : pick(HAIRS), cheer: (Math.random() * 5) | 0, sc: rand(0.92, 1.08),
   };
   if (a.hat && a.hair === 'hAfro') a.hair = 'hShort';
+  const kid = !fan && Math.random() < 0.1;
+  if (kid) { a.kid = true; a.sc = rand(0.58, 0.68); a.hat = false; a.speed *= 1.1; }
   a.col = {
-    shirt: new THREE.Color(fan ? 0x121212 : thriller ? 0xc1121f : pick(SHIRTS)), pants: new THREE.Color(fan ? 0x121212 : pick(PANTS)), shoe: new THREE.Color(fan ? 0x111111 : pick(SHOES)),
+    shirt: new THREE.Color(fan ? 0x121212 : thriller ? 0xc1121f : a.kid ? pick([0xffd60a, 0x3de8ff, 0xff70a6, 0x7cff6b, 0xff9f1c]) : pick(SHIRTS)), pants: new THREE.Color(fan ? 0x121212 : pick(PANTS)), shoe: new THREE.Color(fan ? 0x111111 : pick(SHOES)),
     skin: new THREE.Color(pick(SKINS)), hair: new THREE.Color(fan ? 0x0b0806 : pick(HAIRC)), hat: new THREE.Color(Math.random() < 0.85 ? 0x151515 : 0xf3f3f3), stick: pick(PALETTE).clone(),
   };
   a.col.handR = fan ? new THREE.Color(0xffffff) : a.col.skin;
+  if (!a.kid && pets.size < 3 && Math.random() < 0.04) a.pet = makeDog();
   a.tx = cellX(Math.random() < 0.5 ? 11 : 12) + rand(-0.6, 0.6); a.tz = cellZ(15) + 0.6;
   G.agents.push(a); applyColors(i, a);
   if (!G.level.free) { G.money += 2 * G.level.scale; }
 }
 function removeAgent(a) {
+  if (a.pet) { scene.remove(a.pet); scene.remove(a.pet.userData.leash); pets.delete(a.pet); a.pet = null; }
   const i = G.agents.indexOf(a); if (i < 0) return; const last = G.agents.length - 1;
   if (i !== last) { const L = G.agents[last]; G.agents[i] = L; applyColors(i, L); }
   G.agents.pop();
@@ -1797,6 +1840,7 @@ function removeAgent(a) {
 const _mB = new THREE.Matrix4(), _mL = new THREE.Matrix4(), _mO = new THREE.Matrix4(), _eu = new THREE.Euler(), _sc = new THREE.Matrix4();
 function hideAgent(i) { for (const k in IM) IM[k].setMatrixAt(i, HIDE); }
 function poseAgent(i, a, x, y, z, ry, legSw, aLx, aLz, aRx, aRz, glow) {
+  if (a.pet) { const u = a.pet.userData; u.f = frameNo; u.ax = x; u.az = z; u.ry = ry; u.sc = a.sc; }
   _mB.makeRotationY(ry); _sc.makeScale(a.sc, a.sc, a.sc); _mB.multiply(_sc); _mB.setPosition(x, y, z);
   for (const k of ['pelvis', 'torso', 'head', 'eyes']) IM[k].setMatrixAt(i, _mB);
   for (const h of HAIRS) IM[h].setMatrixAt(i, a.hair === h ? _mB : HIDE);
@@ -2453,6 +2497,7 @@ $('wardCards').addEventListener('click', e => { const c = e.target.closest('[dat
    LEVEL FLOW
    ========================================================= */
 function clearWorld() {
+  for (const p of pets) { scene.remove(p); scene.remove(p.userData.leash); } pets.clear();
   exitWalk(true); closeWardrobe();
   for (const b of [...G.buildings]) buildGroup.remove(b.group);
   G.buildings.length = 0; occ.fill(-1); fieldCache.clear();
@@ -2637,7 +2682,7 @@ function pathToExit(fig) { let gx = toGX(fig.position.x), gz = toGZ(fig.position
 function arrestThief(T, cop, msg) {
   for (const o of T.chasers) if (o !== cop) { o.mode = 'patrol'; o.path = []; }
   T.chasers = [cop]; T.cop = cop; cop.mode = 'chase';
-  ledMsgUntil = performance.now() + 7000; // 'WE GOT A SMOOTH CRIMINAL!' on the big screens
+  ledMsgUntil = performance.now() + 15000; // 'WE GOT A SMOOTH CRIMINAL!' on the big screens
   T.state = 'arrested'; T.t = 0; T.fig.userData.bag.visible = false;
   if (T.loot && isFinite(G.money)) G.money += T.loot;
   for (const a of G.agents) a.mood = Math.min(100, a.mood + 3);
@@ -2675,14 +2720,14 @@ function updateThief(dt) {
   } else if (T.state === 'flee') {
     T.ph += dt * 12; walkCycle(f, T.ph);
     const done = moveAlong(f, T.path, 3.0, dt);
-    for (const o of police) if ((!o.mode || o.mode === 'patrol') && copDist(o, f) < 6) { o.mode = 'chase'; o.path = []; T.chasers.push(o); toast('👮 Nog een agent rent mee!'); }
+    for (const o of police) if ((!o.mode || o.mode === 'patrol') && copDist(o, f) < 9) { o.mode = 'chase'; o.path = []; T.chasers.push(o); toast('👮 Nog een agent rent mee!'); }
     T.repath -= dt; const repath = T.repath <= 0; if (repath) T.repath = 0.35;
     for (const C of T.chasers) {
       // chase: follow a fresh path through the grid, straight run when close or outside the grid
       const cf = C.fig, dist = copDist(C, f);
       if (dist < 2.5 || f.position.z > 16) C.path = [[f.position.x, f.position.z]];
       else if (repath || !C.path.length) { let gx = toGX(cf.position.x), gz = toGZ(cf.position.z); if (!walk(gx, gz)) [gx, gz] = nearestWalkable(gx, gz); C.path = gridPath(gx, gz, toGX(f.position.x), toGZ(f.position.z)) || [[f.position.x, f.position.z]]; }
-      C.ph += dt * 13; walkCycle(cf, C.ph); moveAlong(cf, C.path, 3.9, dt);
+      C.ph += dt * 15; walkCycle(cf, C.ph); moveAlong(cf, C.path, 5.2, dt);
       if (dist < 0.9) { arrestThief(T, C, `👮 Gearresteerd! Je krijgt €${fmt(T.loot)} terug.`); break; }
     }
     if (T.state === 'flee' && done) {
@@ -2751,7 +2796,13 @@ function buildLimo() {
   for (const sd of [-1, 1]) for (const z of [-3.6, 3.6]) { const w = cyl(0.42, 0.42, 0.3, tire, sd * 1.02, 0.42, z, 16); w.rotation.z = Math.PI / 2; car.add(w); const hub = cyl(0.2, 0.2, 0.32, chrome, sd * 1.02, 0.42, z, 10); hub.rotation.z = Math.PI / 2; car.add(hub); }
   const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.24), signMat('KING', 0xffd34d, 0x111111)); plate.position.set(0, 0.62, 5.13); car.add(plate);
   const fig = makeFigure(OUTFITS[save.outfit] ? save.outfit : 'classic'); fig.scale.setScalar(1.1); fig.position.set(0, 0.7, 0.2); g.add(fig); // waves from the sunroof
-  g.userData = { fig };
+  // rear door that swings open when Michael steps out (hinge at the front edge)
+  const door = new THREE.Group(); door.position.set(1.075, 0, -0.35); g.add(door);
+  door.add(box(0.07, 0.86, 1.3, black, 0, 0.78, -0.65));                 // lower door panel
+  door.add(box(0.06, 0.6, 1.2, glass, 0, 1.5, -0.65));                   // tinted door window
+  door.add(box(0.075, 0.07, 1.3, chrome, 0, 0.98, -0.65));               // chrome stripe
+  door.add(box(0.05, 0.05, 0.22, chrome, 0.05, 1.08, -1.1));             // door handle
+  g.userData = { fig, door };
   g.visible = false; scene.add(g); return g;
 }
 function nearestOnMPath(x, z) {
@@ -2807,13 +2858,27 @@ function updateLimo(dt, t, b) {
     poseFigure(limoModel.userData.fig, 'point', b, t);
     if (L.s >= LLEN - 0.01) { L.phase = 'door'; L.t = 0; banner('🕶️ De bewakers staan klaar voor de King of Pop!', 4); }
   } else if (L.phase === 'door') {
-    if (L.t > 1.2) {
-      L.phase = 'walk'; L.s = 0; L.t = 0; limoModel.userData.fig.visible = false; limoWalker.visible = true; setGuardPose(true);
+    // Michael ducks back inside, swings the door open and steps out holding it
+    const door = limoModel.userData.door, u = clamp((L.t - 0.3) / 1.0, 0, 1), e = u * u * (3 - 2 * u);
+    door.rotation.y = -1.3 * e;
+    if (L.t > 0.3 && limoModel.userData.fig.visible) {
+      limoModel.userData.fig.visible = false; limoWalker.visible = true; setGuardPose(true);
+      limoWalker.position.set(MPATH[0][0] + 0.5, 0, MPATH[0][1]); limoWalker.rotation.y = -Math.PI / 2;
+    }
+    if (limoWalker.visible) {
+      limoWalker.position.x = lerp(MPATH[0][0] + 0.5, MPATH[0][0], e); // stepping out of the car
+      poseFigure(limoWalker, 'stand', 0, 0); const p = limoWalker.userData.parts;
+      p.armR.rotation.set(-1.25 + e * 0.2, 0, -0.25 - e * 0.5); p.elbowR.rotation.x = -0.3;      // hand on the door
+      p.armL.rotation.set(-0.3 + e * 0.9 * Math.min(1, L.t > 1.4 ? (L.t - 1.4) * 3 : 0) * -1, 0, 0.3); // then a wave
+    }
+    if (L.t > 2.0) {
+      L.phase = 'walk'; L.s = 0; L.t = 0;
       const [x, z] = MPATH[0];
       for (let i = 0; i < 50; i++) FX.emit(x + rand(-.5, .5), rand(1, 3), z + rand(-.5, .5), rand(-3, 3), rand(0, 4), rand(-3, 3), pick(PALETTE), rand(0.5, 1), 1, 0.92);
       audio.cheer(0.5);
     }
   } else if (L.phase === 'walk') {
+    { const door = limoModel.userData.door; if (L.s > 2) door.rotation.y = Math.min(0, door.rotation.y + dt * 1.6); } // door closes behind him
     L.s = Math.min(MLEN, L.s + dt * 1.8);
     const [g, u] = segAt(MSEG, L.s), w = limoWalker;
     w.position.set(lerp(g.x1, g.x2, u), lerp(g.y1, g.y2, u), lerp(g.z1, g.z2, u)); w.rotation.y = Math.atan2(g.x2 - g.x1, g.z2 - g.z1);
@@ -2879,6 +2944,7 @@ function tick() {
   try { frame(); } catch (err) { console.error(err); }
 }
 function frame() {
+  frameNo++;
   const rdt = Math.min(0.05, clock.getDelta()); const t = clock.elapsedTime;
   const b = audio.beat();
   const dt = rdt * G.speed;
@@ -2945,7 +3011,7 @@ function frame() {
   for (const d of animDecor) d.update(t, b, G.nf);
   if (stadiumFans && ((t * 30) | 0) % 2 === 0) { const { im, fans, phase } = stadiumFans; const jb = Math.pow(Math.max(0, Math.sin(b * Math.PI)), 2) * (0.2 + 0.4 * G.nf); for (let i = 0; i < fans.length; i++) { const p = fans[i]; m4.makeTranslation(p[0], p[1] + (phase[i] < 0.5 ? jb : 0), p[2]); im.setMatrixAt(i, m4); } im.instanceMatrix.needsUpdate = true; }
   if (rain.visible) { for (let i = 0; i < RAIN_N; i++) { const j = i * 6; rainPos[j + 1] -= 30 * rdt; rainPos[j + 4] -= 30 * rdt; if (rainPos[j + 1] < 0) { rainPos[j + 1] += 35; rainPos[j + 4] += 35; } } rainGeo.attributes.position.needsUpdate = true; }
-  updateRockets(rdt); FX.update(rdt); CONF.update(rdt); updateBubbles(rdt);
+  updatePets(rdt); updateRockets(rdt); FX.update(rdt); CONF.update(rdt); updateBubbles(rdt);
   if (selRing.visible) selRing.material.opacity = 0.6 + 0.4 * Math.sin(t * 5);
   ledT -= rdt; if (ledT <= 0) { ledT = IS_MOBILE ? 0.12 : 0.06; drawLED(t, b); }
   if (bannerT > 0) { bannerT -= rdt; if (bannerT <= 0) $('banner').classList.remove('show'); }
